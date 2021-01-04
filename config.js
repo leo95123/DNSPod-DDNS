@@ -4,14 +4,21 @@ const config = {
   terminal: 300,
   domain: "1eo.xyz",
   sub_domain: "nas",
-  logType: ["file", "email"],
-  logFileSize: 200,
-  logNum: 3,
-  sendEmail: "leo95123@qq.com",
-  recieveEmail: "leo95123@qq.com",
-  smtpHost: "smtp.qq.com",
-  smtpPort: "465",
-  smtpUser: "leo95123@qq.com",
-  smtpPass: "",
+  logs: {
+    file: {
+      enable: true,
+      logFileSize: 200,
+      logNum: 3,
+    },
+    email: {
+      enable: true,
+      sendEmail: "leo95123@qq.com",
+      recieveEmail: "leo95123@qq.com",
+      smtpHost: "smtp.qq.com",
+      smtpPort: "465",
+      smtpUser: "leo95123@qq.com",
+      smtpPass: "iggedvnbkautfead",
+    },
+  },
 };
 module.exports = config;
