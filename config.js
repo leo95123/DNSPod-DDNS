@@ -3,7 +3,7 @@ const config = {
   token: "68be068850f4fb13070809a1c5524f64",
   terminal: 300,
   domain: "1eo.xyz",
-  sub_domain: "nass",
+  sub_domain: "nas",
   logType: ["file", "email"],
   logFileSize: 200,
   logNum: 3,
