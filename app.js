@@ -1,72 +1,65 @@
-const axios = require("axios");
-const config = require("./config");
-const qs = require("qs");
-const log4js = require("log4js");
+const axios = require('axios')
+const qs = require('qs')
+const log4js = require('log4js')
+const schedule = require('node-schedule')
+const config = require('./config')
 
 // log配置
-let fileAppender = {};
-if (config.logs.file.enable) {
-  fileAppender = {
-    type: "file",
-    fileName: "./logs/ddns.log",
-    maxLogSize: config.logs.file.logFileSize,
-    backups: config.logs.file.logNum,
-  };
-}
-let smtpAppender = {};
-if (config.logs.email.enable) {
-  smtpAppender = {
-    type: "@log4js-node/smtp",
-    recipients: config.logs.email.recieveEmail,
-    sender: config.logs.email.sendEmail,
-    subject: "域名解析发生变化",
-    SMTP: {
-      host: config.logs.email.smtpHost,
-      auth: {
-        user: config.logs.email.smtpUser,
-        pass: config.logs.email.smtpPass,
+log4js.configure({
+  appenders: {
+    info: {
+      type: 'file',
+      filename: './logs/ddns.log',
+      maxLogSize: config.logFile.logFileSize,
+      backups: config.logFile.logNum,
+    },
+    email: {
+      type: require('@log4js-node/smtp'),
+      recipients: config.email.recieveEmail,
+      sender: config.email.sendEmail,
+      subject: '域名解析发生变化',
+      SMTP: {
+        host: config.email.smtpHost,
+        port: config.email.smtpPort,
+        auth: {
+          user: config.email.smtpUser,
+          pass: config.email.smtpPass,
+        },
       },
     },
-  };
-}
-log4js.configure({
-  appenders: { info: fileAppender, email: smtpAppender },
-  categories: {
-    default: { appenders: ["info", "email"] },
   },
-});
-const setLog = (log, isEmail = false) => {
-  if (config.logs.file) {
-    log4js.getLogger("info").info(log);
-  }
-  if (config.log.email && isEmail) {
-    log4js.getLogger("email").email(log);
-  }
-};
+  categories: {
+    default: { appenders: ['info'], level: 'fatal' },
+    info: { appenders: ['info'], level: 'all' },
+    email: { appenders: ['email'], level: 'all' },
+  },
+})
+const logger = log4js.getLogger('info')
+
 // axios拦截配置
 axios.interceptors.request.use((config) => {
-  config.headers.common["Content-Type"] = "application/x-www-form-urlencoded";
-  config.proxy = false;
-  return config;
-});
+  config.headers.common['Content-Type'] = 'application/x-www-form-urlencoded'
+  config.proxy = false
+  return config
+})
 // 获取公网IP地址
 const getIp = () => {
   return new Promise((resolve, reject) => {
     axios
-      .get("http://pv.sohu.com/cityjson")
+      .get('http://pv.sohu.com/cityjson')
       .then((res) => {
         if (res.status === 200) {
-          let ipJson = JSON.parse(res.data.slice(19, -1));
-          resolve(ipJson.cip);
+          let ipJson = JSON.parse(res.data.slice(19, -1))
+          resolve(ipJson.cip)
         } else {
-          setLog(`INFO:获取IP失败:${res}`);
+          logger.error(`获取IP失败!`)
         }
       })
       .catch((err) => {
-        setLog(`ERROR:获取IP失败:${err}`);
-      });
-  });
-};
+        logger.error(`获取IP失败!`)
+      })
+  })
+}
 
 // 获取记录
 const getRecord = () => {
@@ -75,11 +68,11 @@ const getRecord = () => {
       login_token: `${config.ID},${config.token}`,
       domain: config.domain,
       sub_domain: config.sub_domain,
-      format: "json",
-    };
+      format: 'json',
+    }
     axios({
-      url: "https://dnsapi.cn/Record.List",
-      method: "post",
+      url: 'https://dnsapi.cn/Record.List',
+      method: 'post',
       data: qs.stringify(params),
     })
       .then((res) => {
@@ -87,17 +80,17 @@ const getRecord = () => {
           let data = {
             domain: res.data.domain,
             records: res.data.records,
-          };
-          resolve(data);
+          }
+          resolve(data)
         } else {
-          setLog(`INFO:获取记录失败:${res}`);
+          logger.error(`获取记录失败:${res.data.status.message}`)
         }
       })
       .catch((err) => {
-        setLog(`ERROR:获取记录失败:${err}`);
-      });
-  });
-};
+        logger.error(`获取记录失败:${err}`)
+      })
+  })
+}
 
 // 设置记录
 /*
@@ -114,39 +107,41 @@ const changeRecord = (ip, domainId, recordId, subDomain, recordLine, mx) => {
     domain_id: domainId,
     record_id: recordId,
     sub_domain: subDomain,
-    record_type: "A",
+    record_type: 'A',
     record_line: recordLine,
     mx: mx,
     value: ip,
-  };
+  }
   axios({
-    url: "https://dnsapi.cn/Record.Modify",
-    method: "post",
+    url: 'https://dnsapi.cn/Record.Modify',
+    method: 'post',
     data: qs.stringify(params),
   })
     .then((res) => {
-      console.log(res.data);
       if (res.status === 200 && res.data.status.code == 1) {
-        setLog(
-          `INFO:设置成功-${res.data.name}.${config.domain}的记录值已改为${res.data.value}`,
-          true
-        );
+        const info = `设置成功:${res.data.record.name}.${config.domain}的记录值已改为${res.data.record.value}`
+        logger.info(info)
+        // 邮件发送
+        if (config.email.enable) {
+          const email = log4js.getLogger('email')
+          email.info(info)
+        }
       } else {
-        setLog(`ERROR:记录设置失败:${err}`);
+        logger.error(`记录设置失败:${res.data.status.message}`)
       }
     })
     .catch((err) => {
-      setLog(`ERROR:记录设置失败:${err}`);
-    });
-};
+      logger.error(`记录设置失败:${err}`)
+    })
+}
 
 const main = async () => {
   try {
-    let ip = await getIp();
-    let record = await getRecord();
+    let ip = await getIp()
+    let record = await getRecord()
     // 对比IP，如果相等不改变解析
     if (record.records[0].value === ip) {
-      return;
+      return
     }
     changeRecord(
       ip,
@@ -155,9 +150,13 @@ const main = async () => {
       record.records[0].name,
       record.records[0].line,
       record.records[0].mx
-    );
+    )
   } catch (e) {
-    console.log(e);
+    logger.error(`${e}`)
   }
-};
-main();
+}
+
+// 定时执行
+schedule.scheduleJob(config.terminal, () => {
+  main()
+})
